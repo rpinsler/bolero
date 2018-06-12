@@ -139,14 +139,15 @@ class Catapult(ContextualEnvironment):
         """The reward of the last roll-out."""
         return np.array([self.reward])
 
-    def step_action(self):
+    def step_action(self, outcome=None):
         """Execute step perfectly."""
-        self.reward = self._compute_reward(self.params, self.context)
+        self.reward, outcome = self._compute_reward(self.params, self.context, outcome)
         if self.verbose >= 1:
             print("[Catapult] Shooting with v = %g, angle = %g" %
                   tuple(self.params))
             print("[Catapult] Reward: %g" % self.reward)
         self.evaluation_done = True
+        return self.reward, outcome
 
     def is_evaluation_done(self):
         """Test if time is over."""
@@ -196,7 +197,7 @@ class Catapult(ContextualEnvironment):
             for _ in range(10):
                 x0 = [uniform.rvs(5.0, 5.0), uniform.rvs(0.0, np.pi / 2)]
                 result = fmin_l_bfgs_b(
-                    lambda x: -self._compute_reward(x, context),
+                    lambda x: -self._compute_reward(x, context)[0],
                     x0, approx_grad=True,
                     bounds=[(5.0, 10.0), (0.0, np.pi / 2)])
                 if -result[1] > self.max_feedback_cache[c]:
@@ -209,18 +210,20 @@ class Catapult(ContextualEnvironment):
         else:
             return self.context_distribution.rvs(1)
 
-    def _compute_reward(self, params, context):
+    def _compute_reward(self, params, context, hit=None):
         context = self._denormalize_context(context)
         v, theta = params
         # Enforce boundaries for velocity and angle
         v = np.clip(v, 5.0, 10.0)
         theta = np.clip(theta, 0.0, np.pi / 2.0)
 
-        hit = self._shoot(v, theta)
-        if self.verbose >= 1:
-            print("[Catapult] Hit the ground at %g (target: %g)"
-                  % (hit, self._denormalize_context(self.context[0])))
-        return -np.abs(hit - context) - self.velocity_penalty * v
+        if hit is None:
+            hit = self._shoot(v, theta)
+            if self.verbose >= 1:
+                print("[Catapult] Hit the ground at %g (target: %g)"
+                      % (hit, self._denormalize_context(self.context[0])))
+        reward = -np.abs(hit - context) - self.velocity_penalty * v
+        return reward, hit
 
     def _shoot(self, v, theta):
         a, b, c = self._trajectory_params(v, theta)
