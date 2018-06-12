@@ -4,7 +4,7 @@
 import os
 import sys
 import logging
-from cStringIO import StringIO
+from io import StringIO
 
 
 class HideExtern(object):
